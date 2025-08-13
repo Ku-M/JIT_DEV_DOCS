@@ -272,3 +272,134 @@ public interface IButtonPopToastAction<T extends BaseFeActionParameter> extends 
 
 
 ## 3、工程实践
+
+### 3.1、如何操作Form
+
+通过之前的积累，我们成功的按照路线：“数据模型->视图模型”去创建了很多视图，我们会碰到一个很常见的需求：**“我在表格的行操作栏中添加了一个按钮，我想单击按钮后修改这行数据的某个值，我需要如何做？”**
+
+我们以上面这个需求入手。
+
+完整代码如下：
+
+```java
+public interface IChangeTableCurrentBeClickedRowForm<T extends BaseFeActionParameter>
+        extends CellIntf, BaseActionIntf<T>, BasicFunc {
+    @Override
+    default Object execute(T input) throws Exception {
+        
+        // 获取表格被单击的那行
+        Form form = getTableCurrBeClickedForm(input);
+
+        try (IDao dao = IDaoService.newIDao()) {
+
+            // 简单修改值
+            form.setAttrValue("修改时间", System.currentTimeMillis());
+            // 更新form
+            IFormMgr.get().updateForm(dao, form);
+
+            //查询方法1： 根据Code进行查询（Code是每个Form都固有的，在界面上一般叫“编号”）
+            Form form1 = IFormMgr.get().queryFormByCode(dao, "模型Id", "code");
+
+            //查询方法2： 手动构建Where条件进行查询
+            Cnd cnd = Cnd.NEW();
+            cnd.where().andEquals(
+                    // 需要根据工具类获取字段在底层存储的真实字段名（其实是拼音！）
+                    IFormMgr.get().getFieldCode("学生姓名"),
+                    "张三"
+            );
+            ResultSet<Form> formRs = IFormMgr.get().queryFormPage(dao, "模型Id", cnd,
+                    1, 10, false, false);
+
+            // 提交事务
+            dao.commit();
+
+        }
+
+
+        return null;
+    }
+
+    /**
+     * 获取表格被单击的那行
+     *
+     * @param input
+     * @return
+     * @throws Exception
+     */
+    default Form getTableCurrBeClickedForm(BaseFeActionParameter input) throws Exception {
+        PanelContext context = input.getPanelContext();
+        if (!(context instanceof TableContext) && !(context instanceof ListViewContext)) {
+            throw new VerifyException(getI18nString(context, StrUtil.format(
+                    "无法从组件[{}]中获取表格被点击行数据", context.getClass().getName()
+            )));
+        }
+
+        // 如果是表格
+        if (context instanceof TableContext) {
+            TableContext tableContext = (TableContext) context;
+            String currentRowId = tableContext.getCurrentRowId();
+            TableRowDto tableRow = QueryTableRows.queryOne(tableContext, currentRowId);
+
+            return (Form) tableRow.getBinaryData();
+        } else {
+            // 如果是listView
+            ListViewContext listViewContext = (ListViewContext) context;
+            String clickItemKey = listViewContext.getClickItemKey();
+            ListViewItemDto itemDto = QueryListViewItem.query(listViewContext, clickItemKey);
+            TableListViewRowDto tableListViewRowDto = (TableListViewRowDto) itemDto.getBinaryData();
+            return (Form) tableListViewRowDto.getData();
+        }
+    }
+
+
+    @Override
+    default Class<? extends T> getInputParamClass() {
+        return (Class<? extends T>) BaseFeActionParameter.class;
+    }
+
+}
+```
+
+
+
+其中从代码中可以观察到几个重点：
+
+- **数据模型在代码中的载体名为【Form】，我们基于这个进行变更各个属性的值**
+- **操作Form一般使用IFormMgr类**
+- **通过PanelContext可以获取到前端相关的数据**
+- **在GPF（JIT）中操作模型，需要手动管理事务，基于IDaoService服务创建DAO，并且使用try-resource代码块**
+
+另外，如果我们要主动的查询Form，也是使用IFormMgr，常用的方法：
+
+```java
+
+            //查询方法1： 根据Code进行查询（Code是每个Form都固有的，在界面上一般叫“编号”）
+            Form form1 = IFormMgr.get().queryFormByCode(dao, "模型Id", "code");
+
+            //查询方法2： 手动构建Where条件进行查询
+            Cnd cnd = Cnd.NEW();
+            cnd.where().andEquals(
+                    // 需要根据工具类获取字段在底层存储的真实字段名（其实是拼音！）
+                    IFormMgr.get().getFieldCode("学生姓名"),
+                    "张三"
+            );
+            ResultSet<Form> formRs = IFormMgr.get().queryFormPage(dao, "模型Id", cnd,
+                    1, 10, false, false);
+
+            // 提交事务
+            dao.commit();
+            
+```
+
+
+
+### 3.2、如何操作视图
+
+#### 3.2.1、表单视图操作
+
+#### 3.2.2、表格视图操作
+
+
+
+
+
